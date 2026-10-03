@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 from contextlib import redirect_stdout
 from dataclasses import dataclass
+from collections import Counter
 from typing import Any, Callable
 
 
@@ -121,3 +122,105 @@ def web_search(query: str) -> str:
     snippets = re.findall(r'class="result-snippet"[^>]*>(.*?)</a>', html, re.S)
     clean = [re.sub(r"<[^>]+>", "", s).strip() for s in snippets[:5]]
     return "\n---\n".join(c for c in clean if c) or "No snippets found."
+
+
+# ---------------------------------------------------------------- helpers
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_RUN_RE = re.compile(r"[ \t\xa0]+")
+_BLANK_RE = re.compile(r"\n[ \t]*\n+")
+
+
+@tool("web_fetch", "Fetch an http(s) URL and return its page text (HTML stripped).",
+      {"url": {"type": "string"}, "max_chars": {"type": "integer"}})
+def web_fetch(url: str, max_chars: int = 8000) -> str:
+    scheme = urllib.parse.urlparse(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        return "ERROR: only http:// and https:// URLs are allowed."
+    max_chars = min(max(max_chars, 100), 50000)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (AURA agent)"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read(2_000_000)  # hard cap on download size
+    except Exception as e:
+        return f"ERROR: fetch failed: {e}"
+    text = raw.decode("utf-8", errors="replace")
+    text = _TAG_RE.sub(" ", text)
+    text = _RUN_RE.sub(" ", text)
+    text = _BLANK_RE.sub("\n\n", text).strip()
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n...[truncated]"
+    return text or "(page contained no readable text)"
+
+
+_TODOS: list[dict[str, Any]] = []
+_TODO_NEXT_ID = 1
+
+
+@tool("todo_list", "Manage a simple in-memory todo list.",
+      {"action": {"type": "string"}, "text": {"type": "string"}, "id": {"type": "integer"}})
+def todo_list(action: str, text: str = "", id: int = 0) -> str:
+    """Actions: add (needs text), list, complete (needs id), remove (needs id)."""
+    global _TODO_NEXT_ID
+    action = action.lower().strip()
+    if action == "add":
+        if not text.strip():
+            return "ERROR: 'add' needs non-empty text."
+        item = {"id": _TODO_NEXT_ID, "text": text.strip(), "done": False}
+        _TODOS.append(item)
+        _TODO_NEXT_ID += 1
+        return f"Added todo #{item['id']}: {item['text']}"
+    if action == "list":
+        if not _TODOS:
+            return "(todo list is empty)"
+        return "\n".join(
+            f"[{'x' if t['done'] else ' '}] #{t['id']} {t['text']}" for t in _TODOS)
+    if action in ("complete", "remove"):
+        item = next((t for t in _TODOS if t["id"] == id), None)
+        if item is None:
+            return f"ERROR: no todo with id {id}."
+        if action == "complete":
+            item["done"] = True
+            return f"Completed todo #{id}."
+        _TODOS.remove(item)
+        return f"Removed todo #{id}."
+    return "ERROR: unknown action. Use add, list, complete, or remove."
+
+
+_STOPWORDS = frozenset(
+    "a an the and or but if of to in on for with as is are was were be been "
+    "this that it its they their we you he she not no do does did will would "
+    "can could should has have had at by from our your his her them".split())
+_HEAD_TAIL = 5
+_MAX_SUMMARY_BYTES = 1_000_000
+
+
+@tool("summarize_file", "Summarize a text file: counts, head/tail lines, top keywords.",
+      {"path": {"type": "string"}, "top_n": {"type": "integer"}})
+def summarize_file(path: str, top_n: int = 10) -> str:
+    path = os.path.expanduser(path)
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        content = f.read(_MAX_SUMMARY_BYTES)
+        truncated = bool(f.read(1))
+    lines = content.splitlines()
+    words = content.split()
+    tokens = [w.strip(".,!?;:\"'()[]{}<>").lower() for w in words]
+    tokens = [t for t in tokens if len(t) >= 3 and t not in _STOPWORDS and t.isalpha()]
+    top_n = min(max(top_n, 1), 30)
+    keywords = Counter(tokens).most_common(top_n)
+    parts = [
+        f"File: {path}",
+        f"Lines: {len(lines)}  Words: {len(words)}  Chars: {len(content)}",
+        "Top keywords: " + (", ".join(f"{k}({n})" for k, n in keywords) or "(none)"),
+        "First lines:",
+    ]
+    for i, ln in enumerate(lines[:_HEAD_TAIL], 1):
+        parts.append(f"  {i}: {ln}")
+    parts.append("Last lines:")
+    tail = lines[-_HEAD_TAIL:]
+    start = len(lines) - len(tail) + 1
+    for i, ln in enumerate(tail, start):
+        parts.append(f"  {i}: {ln}")
+    if truncated:
+        parts.append("(file larger than 1MB — summarized the first 1MB)")
+    return "\n".join(parts)

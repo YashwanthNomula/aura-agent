@@ -71,6 +71,9 @@ python -m aura.cli "Find the largest file in ~/Downloads and summarize it"
 | `run_shell` | Run shell commands (dangerous patterns refused, timeouts enforced) |
 | `python_eval` | Execute Python, capture output |
 | `web_search` | Live web snippets, no API key |
+| `web_fetch` | Fetch a URL's page text, HTML stripped (http/https only) |
+| `todo_list` | In-memory todo list: add, list, complete, remove |
+| `summarize_file` | File summary: counts, head/tail lines, top keywords |
 
 Adding a tool is one decorator:
 
