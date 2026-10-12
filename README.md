@@ -97,6 +97,7 @@ aura/
 │   ├── tools.py     # tool registry + built-ins
 │   ├── llm.py       # OpenAI-compatible client + scripted demo model
 │   ├── memory.py    # persistent facts + episode log
+│   ├── vector_memory.py # zero-dep semantic recall (hashed embeddings)
 │   └── cli.py       # `python -m aura.cli "task"`
 ├── examples/demo.py # zero-key end-to-end demo
 └── tests/           # pytest suite
@@ -108,12 +109,27 @@ aura/
 pip install pytest && python -m pytest tests/ -q
 ```
 
+## Memory and semantic recall
+
+AURA remembers long-term facts (`memory.remember("pet", "cat named Milo")`)
+and logs every run as an episode in `~/.aura/memory.json`. `memory.recall(key)`
+is exact lookup; `memory.recall_semantic(query, k=5)` is semantic recall:
+memories are embedded with zero-dependency hashed token/bigram vectors
+(`aura/vector_memory.py`, no downloads, no GPU) and ranked by cosine
+similarity, so a rephrased query still finds the right memory where keyword
+search misses. From the shell:
+
+```bash
+python -m aura.cli --recall "what animal do I own"
+# [0.243] fact:pet: pet: has a cat named Milo
+```
+
 ## Roadmap
 
 - [ ] Streaming thoughts to a web UI
 - [ ] Tool sandboxing with containers
 - [ ] Multi-agent crews (planner + workers)
-- [ ] Vector-memory recall
+- [x] Vector-memory recall
 
 ---
 

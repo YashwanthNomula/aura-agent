@@ -35,6 +35,16 @@ class Memory:
     def recall(self, key: str) -> str | None:
         return self.facts.get(key)
 
+    def recall_semantic(self, query: str, k: int = 5) -> list[tuple[str, str, float]]:
+        """Semantic recall: top-k (doc_id, text, score) memories like *query*.
+
+        Ranks facts and past episodes by cosine similarity of zero-dep
+        hashed embeddings, so rephrased queries still find relevant
+        memories where exact keyword matching would miss.
+        """
+        from .vector_memory import index_memory
+        return index_memory(self).query(query, k=k)
+
     def log_episode(self, task: str, result: str) -> None:
         self.episodes.append({
             "t": time.strftime("%Y-%m-%d %H:%M"),
