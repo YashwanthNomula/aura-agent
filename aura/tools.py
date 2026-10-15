@@ -11,7 +11,8 @@ import re
 import subprocess
 import urllib.parse
 import urllib.request
-from contextlib import redirect_stdout
+from collections.abc import Iterator
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from collections import Counter
 from typing import Any, Callable
@@ -44,11 +45,42 @@ def describe_tools() -> str:
     return "\n".join(lines)
 
 
-def run_tool(name: str, args: dict[str, Any]) -> str:
+# ------------------------------------------------------- memory-aware tools
+# Most tools are stateless, but a few (recall_memory) need the agent's
+# Memory. Rather than a singleton, the active memory is bound explicitly:
+# pass memory= to run_tool (what the Agent does), or use memory_scope()
+# around a call. With neither, a default Memory() is used.
+
+_BOUND_MEMORY: Any = None
+
+
+@contextmanager
+def memory_scope(memory: Any) -> Iterator[None]:
+    """Temporarily bind *memory* as the active memory for tool calls."""
+    global _BOUND_MEMORY
+    prev = _BOUND_MEMORY
+    _BOUND_MEMORY = memory
+    try:
+        yield
+    finally:
+        _BOUND_MEMORY = prev
+
+
+def _active_memory() -> Any:
+    if _BOUND_MEMORY is not None:
+        return _BOUND_MEMORY
+    from .memory import Memory  # local import: memory.py never imports tools
+    return Memory()
+
+
+def run_tool(name: str, args: dict[str, Any], memory: Any = None) -> str:
     t = REGISTRY.get(name)
     if t is None:
         return f"ERROR: unknown tool '{name}'. Available: {', '.join(sorted(REGISTRY))}"
     try:
+        if memory is not None:
+            with memory_scope(memory):
+                return str(t.func(**args))
         return str(t.func(**args))
     except TypeError as e:
         return f"ERROR: bad arguments for {name}: {e}"
@@ -224,3 +256,25 @@ def summarize_file(path: str, top_n: int = 10) -> str:
     if truncated:
         parts.append("(file larger than 1MB — summarized the first 1MB)")
     return "\n".join(parts)
+
+
+@tool("recall_memory", "Recall relevant long-term facts and past episodes from memory "
+      "using semantic search. Use it mid-task when the task may depend on something "
+      "remembered earlier (preferences, names, past runs).",
+      {"query": {"type": "string"}, "k": {"type": "integer"}})
+def recall_memory(query: str, k: int = 5) -> str:
+    """Semantic recall over the active memory (bound via run_tool's memory=
+    argument or memory_scope); falls back to a default Memory() otherwise."""
+    if not query or not str(query).strip():
+        return "ERROR: recall_memory needs a non-empty query."
+    try:
+        k = max(1, min(int(k), 20))
+    except (TypeError, ValueError):
+        k = 5
+    try:
+        hits = _active_memory().recall_semantic(str(query), k=k)
+    except Exception as e:
+        return f"ERROR: recall_memory failed: {e}"
+    if not hits:
+        return "(no memories matched that query)"
+    return "\n".join(f"[{score:.3f}] {doc_id}: {text}" for doc_id, text, score in hits)

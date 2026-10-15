@@ -80,7 +80,7 @@ class Agent:
                 obs = "ERROR: no ACTION found. Reply with THOUGHT/ACTION or ANSWER."
             else:
                 self._say(f"[step {step}] acting: {name}({json.dumps(args)[:100]})")
-                obs = run_tool(name, args)
+                obs = run_tool(name, args, memory=self.memory)
             self._say(f"[step {step}] observed: {obs[:200]}")
             messages.append(Message("user", f"OBSERVATION: {obs}"))
 

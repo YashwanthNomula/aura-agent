@@ -74,6 +74,7 @@ python -m aura.cli "Find the largest file in ~/Downloads and summarize it"
 | `web_fetch` | Fetch a URL's page text, HTML stripped (http/https only) |
 | `todo_list` | In-memory todo list: add, list, complete, remove |
 | `summarize_file` | File summary: counts, head/tail lines, top keywords |
+| `recall_memory` | Semantic recall over long-term facts + past episodes (mid-task) |
 
 Adding a tool is one decorator:
 
