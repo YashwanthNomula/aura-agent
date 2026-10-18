@@ -6,7 +6,7 @@ import re
 
 from .llm import LLMClient, Message
 from .memory import Memory
-from .tools import describe_tools, run_tool
+from .tools import REGISTRY, describe_tools, run_tool
 
 SYSTEM_PROMPT = """You are AURA, an autonomous agent. You solve tasks by reasoning and using tools.
 
@@ -45,21 +45,38 @@ def _parse_action(text: str) -> tuple[str | None, dict]:
 
 
 class Agent:
-    """Runs the thought -> action -> observation loop against an LLM backend."""
+    """Runs the thought -> action -> observation loop against an LLM backend.
+
+    ``allowed_tools`` confines the agent to a subset of the tool registry
+    (least privilege — a read-only agent gets ``["read_file", "list_dir",
+    "recall_memory"]`` and can never call ``write_file``/``run_shell``).
+    Unknown names raise ValueError (fail-closed). ``None`` (default)
+    allows every registered tool, and the system prompt lists only the
+    tools the agent may actually use.
+    """
 
     def __init__(self, llm: LLMClient, max_steps: int = 10,
-                 memory: Memory | None = None, verbose: bool = True):
+                 memory: Memory | None = None, verbose: bool = True,
+                 allowed_tools: list[str] | None = None):
         self.llm = llm
         self.max_steps = max_steps
         self.memory = memory or Memory()
         self.verbose = verbose
+        if allowed_tools is not None:
+            unknown = sorted(set(allowed_tools) - set(REGISTRY))
+            if unknown:
+                raise ValueError(
+                    f"unknown tool(s) in allowed_tools: {', '.join(unknown)}")
+        self.allowed_tools = list(allowed_tools) if allowed_tools is not None else None
 
     def _say(self, text: str) -> None:
         if self.verbose:
             print(text, flush=True)
 
     def run(self, task: str) -> str:
-        system = SYSTEM_PROMPT.format(tools=describe_tools(), memory=self.memory.context())
+        system = SYSTEM_PROMPT.format(
+            tools=describe_tools(only=self.allowed_tools),
+            memory=self.memory.context())
         messages = [Message("system", system), Message("user", f"TASK: {task}")]
         self._say(f"\nAURA starting: {task}\n")
 
@@ -80,7 +97,8 @@ class Agent:
                 obs = "ERROR: no ACTION found. Reply with THOUGHT/ACTION or ANSWER."
             else:
                 self._say(f"[step {step}] acting: {name}({json.dumps(args)[:100]})")
-                obs = run_tool(name, args, memory=self.memory)
+                obs = run_tool(name, args, memory=self.memory,
+                               allowed=self.allowed_tools)
             self._say(f"[step {step}] observed: {obs[:200]}")
             messages.append(Message("user", f"OBSERVATION: {obs}"))
 
