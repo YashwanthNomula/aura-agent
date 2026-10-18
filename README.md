@@ -89,6 +89,21 @@ def roll_dice(sides: int = 6) -> str:
 
 The agent discovers it automatically on the next run.
 
+### Least-privilege tool allowlists
+
+Confine an agent to the tools its task actually needs — a first step
+toward full sandboxing. Disallowed tools are refused before they run,
+and the system prompt only lists the tools the agent may use:
+
+```python
+from aura.agent import Agent
+# Read-only agent: can never write files or run shell commands.
+agent = Agent(llm, allowed_tools=["read_file", "list_dir", "recall_memory"])
+```
+
+Unknown names in `allowed_tools` raise `ValueError` (fail-closed).
+Omit it and every registered tool is available, as before.
+
 ## Project layout
 
 ```
