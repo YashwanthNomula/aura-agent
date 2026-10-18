@@ -37,9 +37,11 @@ def tool(name: str, description: str, parameters: dict[str, Any]):
     return deco
 
 
-def describe_tools() -> str:
+def describe_tools(only: list[str] | None = None) -> str:
     lines = []
     for t in REGISTRY.values():
+        if only is not None and t.name not in only:
+            continue
         params = ", ".join(f"{k} ({v.get('type', '?')})" for k, v in t.parameters.items())
         lines.append(f"- {t.name}({params}): {t.description}")
     return "\n".join(lines)
@@ -73,7 +75,18 @@ def _active_memory() -> Any:
     return Memory()
 
 
-def run_tool(name: str, args: dict[str, Any], memory: Any = None) -> str:
+def run_tool(name: str, args: dict[str, Any], memory: Any = None,
+             allowed: list[str] | None = None) -> str:
+    """Run a registered tool by name.
+
+    ``allowed`` is an allowlist (e.g. from ``Agent(allowed_tools=...)``):
+    when given, any tool outside it is refused without running, so an
+    agent can be confined to the least privilege it needs. ``None`` means
+    every registered tool is available (the historical default).
+    """
+    if allowed is not None and name not in allowed:
+        return (f"ERROR: tool '{name}' is not allowed for this agent. "
+                f"Allowed: {', '.join(sorted(allowed)) or '(none)'}")
     t = REGISTRY.get(name)
     if t is None:
         return f"ERROR: unknown tool '{name}'. Available: {', '.join(sorted(REGISTRY))}"
