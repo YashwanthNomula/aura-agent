@@ -110,6 +110,7 @@ Omit it and every registered tool is available, as before.
 aura/
 ├── aura/
 │   ├── agent.py     # the ReAct loop
+│   ├── crew.py      # multi-agent crews: planner + least-privilege workers
 │   ├── tools.py     # tool registry + built-ins
 │   ├── llm.py       # OpenAI-compatible client + scripted demo model
 │   ├── memory.py    # persistent facts + episode log
@@ -140,11 +141,46 @@ python -m aura.cli --recall "what animal do I own"
 # [0.243] fact:pet: pet: has a cat named Milo
 ```
 
+## Multi-agent crews (planner + workers)
+
+One agent is good at a focused job; a crew is good at a *big* job. A tool-less
+planner decomposes the task into named subtasks, each subtask runs on a
+worker `Agent` confined to a least-privilege tool allowlist, and the planner
+synthesizes the final answer from the workers' results. All agents share one
+memory, so every subtask episode is logged in one place.
+
+```python
+from aura import Crew, WorkerSpec, Memory
+from aura.llm import OpenAICompatibleLLM
+
+crew = Crew(OpenAICompatibleLLM, memory=Memory(), workers=[
+    WorkerSpec("researcher",
+               allowed_tools=["read_file", "list_dir", "web_search"]),
+    WorkerSpec("writer", allowed_tools=["write_file", "todo_list"]),
+])
+result = crew.run("research drift-detection libraries and draft a summary")
+print(result.final)          # the planner's synthesis
+print(result.answers)        # per-subtask worker answers
+```
+
+A malformed planner plan (not JSON, empty, duplicate names, unknown worker)
+fails closed with `ValueError` — silently dropping subtasks would be worse
+than refusing to run. From the shell:
+
+```bash
+python -m aura.cli crew "explain the repo"        # scripted demo, no key
+AURA_LLM=openai python -m aura.cli crew "your task"
+```
+
 ## Roadmap
 
 - [ ] Streaming thoughts to a web UI
 - [ ] Tool sandboxing with containers
-- [ ] Multi-agent crews (planner + workers)
+- [x] Multi-agent crews (planner + workers) — `aura/crew.py`: tool-less planner
+      decomposes the task into named subtasks, each dispatched to a worker
+      Agent confined to a least-privilege allowlist; planner synthesizes the
+      final answer; shared memory logs every subtask episode; malformed
+      plans fail closed
 - [x] Vector-memory recall
 
 ---
