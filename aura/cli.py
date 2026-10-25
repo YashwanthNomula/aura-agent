@@ -106,6 +106,7 @@ def crew_main(argv: list[str], quiet: bool = False, json_mode: bool = False) -> 
         import json
         print(json.dumps({"task": result.task,
                           "plan": result.plan,
+                          "assignments": result.assignments,
                           "answers": result.answers,
                           "final": result.final,
                           "backend": backend}))

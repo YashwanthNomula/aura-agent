@@ -173,3 +173,30 @@ def test_default_workers_sensible():
     assert {w.name for w in workers} == {"researcher", "writer"}
     assert "write_file" not in workers[0].allowed_tools  # read-only
     assert "write_file" in workers[1].allowed_tools
+
+
+def test_assignments_record_explicit_workers(memory):
+    crew = make_crew(
+        [[PLAN, "ANSWER: final combined answer"],
+         ["ANSWER: research done"],
+         ["ANSWER: notes written"]],
+        workers=[WorkerSpec("researcher", allowed_tools=["read_file"]),
+                 WorkerSpec("writer", allowed_tools=["write_file"])],
+        memory=memory,
+    )
+    result = crew.run("explain the repo")
+    assert result.assignments == {"research": "researcher", "notes": "writer"}
+
+
+def test_assignments_record_round_robin_workers(memory):
+    plan = ('ANSWER: [{"name": "one", "brief": "do one"}, '
+            '{"name": "two", "brief": "do two"}]')
+    crew = make_crew(
+        [plan, ["ANSWER: first"], ["ANSWER: second"],
+         ["ANSWER: synthesized"]],
+        workers=[WorkerSpec("alpha", allowed_tools=["read_file"]),
+                 WorkerSpec("beta", allowed_tools=["read_file"])],
+        memory=memory,
+    )
+    result = crew.run("task")
+    assert result.assignments == {"one": "alpha", "two": "beta"}

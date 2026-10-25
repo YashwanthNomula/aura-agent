@@ -85,6 +85,7 @@ class CrewResult:
     plan: list[dict]                      # the planner's subtask list
     answers: dict[str, str] = field(default_factory=dict)  # name -> answer
     final: str = ""                       # the planner's synthesis
+    assignments: dict[str, str] = field(default_factory=dict)  # subtask -> worker actually used
 
 
 class Crew:
@@ -186,11 +187,13 @@ class Crew:
             f"{s['name']}->{s.get('worker') or 'round-robin'}" for s in plan))
 
         answers: dict[str, str] = {}
+        assignments: dict[str, str] = {}
         rr = 0
         for item in plan:
             worker_name = item.get("worker") or self._order[rr % len(self._order)]
             if item.get("worker") is None:
                 rr += 1
+            assignments[item["name"]] = worker_name
             self._say(f"\n[crew] dispatching '{item['name']}' "
                       f"to worker '{worker_name}'")
             worker = self._worker(worker_name)
@@ -206,4 +209,5 @@ class Crew:
         final = self._planner.run(SYNTH_PROMPT.format(task=task,
                                                       results=results))
         self.memory.log_episode(f"[crew] {task}", final)
-        return CrewResult(task=task, plan=plan, answers=answers, final=final)
+        return CrewResult(task=task, plan=plan, answers=answers, final=final,
+                          assignments=assignments)
