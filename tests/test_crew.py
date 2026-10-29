@@ -200,3 +200,39 @@ def test_assignments_record_round_robin_workers(memory):
     )
     result = crew.run("task")
     assert result.assignments == {"one": "alpha", "two": "beta"}
+
+
+def test_durations_ms_cover_exactly_the_subtasks(memory):
+    crew = make_crew(
+        [[PLAN, "ANSWER: final combined answer"],
+         ["ANSWER: research done"],
+         ["ANSWER: notes written"]],
+        workers=[WorkerSpec("researcher", allowed_tools=["read_file"]),
+                 WorkerSpec("writer", allowed_tools=["write_file"])],
+        memory=memory,
+    )
+    result = crew.run("explain the repo")
+    assert set(result.durations_ms) == {"research", "notes"}
+    for value in result.durations_ms.values():
+        assert isinstance(value, float)
+        assert value >= 0.0
+
+
+def test_cli_crew_json_includes_durations_ms(tmp_path, monkeypatch, capsys):
+    # crew_main builds its own Memory(); point it at an isolated path so
+    # the real ~/.aura/memory.json is never touched.
+    import json as _json
+
+    import aura.cli as cli
+
+    isolated = Memory(path=str(tmp_path / "cli-mem.json"))
+    monkeypatch.setattr(cli, "Memory", lambda *a, **k: isolated)
+    monkeypatch.setenv("AURA_LLM", "mock")
+    # main() passes quiet=True alongside --json; without it the demo banner
+    # would precede the JSON on stdout.
+    assert cli.crew_main(["explain the repo"], quiet=True, json_mode=True) == 0
+    payload = _json.loads(capsys.readouterr().out)
+    assert set(payload["durations_ms"]) == {"research", "notes"}
+    for value in payload["durations_ms"].values():
+        assert isinstance(value, float)
+        assert value >= 0.0

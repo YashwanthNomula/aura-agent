@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -86,6 +87,7 @@ class CrewResult:
     answers: dict[str, str] = field(default_factory=dict)  # name -> answer
     final: str = ""                       # the planner's synthesis
     assignments: dict[str, str] = field(default_factory=dict)  # subtask -> worker actually used
+    durations_ms: dict[str, float] = field(default_factory=dict)  # subtask -> wall-clock ms the worker run took (planning/synthesis excluded)
 
 
 class Crew:
@@ -188,6 +190,7 @@ class Crew:
 
         answers: dict[str, str] = {}
         assignments: dict[str, str] = {}
+        durations_ms: dict[str, float] = {}
         rr = 0
         for item in plan:
             worker_name = item.get("worker") or self._order[rr % len(self._order)]
@@ -197,10 +200,13 @@ class Crew:
             self._say(f"\n[crew] dispatching '{item['name']}' "
                       f"to worker '{worker_name}'")
             worker = self._worker(worker_name)
+            started = time.perf_counter()
             answer = worker.run(
                 f"SUBTASK '{item['name']}' (part of a larger crew task).\n\n"
                 f"{item['brief']}\n\n"
                 f"Original task for context: {task}")
+            durations_ms[item["name"]] = max(
+                0.0, (time.perf_counter() - started) * 1000.0)
             answers[item["name"]] = answer
 
         results = "\n\n".join(
@@ -210,4 +216,4 @@ class Crew:
                                                       results=results))
         self.memory.log_episode(f"[crew] {task}", final)
         return CrewResult(task=task, plan=plan, answers=answers, final=final,
-                          assignments=assignments)
+                          assignments=assignments, durations_ms=durations_ms)

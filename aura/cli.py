@@ -109,6 +109,7 @@ def crew_main(argv: list[str], quiet: bool = False, json_mode: bool = False) -> 
                           "assignments": result.assignments,
                           "answers": result.answers,
                           "final": result.final,
+                          "durations_ms": result.durations_ms,
                           "backend": backend}))
     else:
         print(result.final)

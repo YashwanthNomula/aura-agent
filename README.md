@@ -162,6 +162,9 @@ result = crew.run("research drift-detection libraries and draft a summary")
 print(result.final)          # the planner's synthesis
 print(result.answers)        # per-subtask worker answers
 print(result.assignments)    # subtask -> worker actually used (round-robin resolved)
+print(result.durations_ms)   # subtask -> wall-clock ms the worker run took
+                             # (planning and synthesis are not timed); also
+                             # emitted as "durations_ms" by `crew --json`
 ```
 
 A malformed planner plan (not JSON, empty, duplicate names, unknown worker)
